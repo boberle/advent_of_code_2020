@@ -14,6 +14,7 @@ import (
 	"aoc2020/day11"
 	"aoc2020/day12"
 	"aoc2020/day13"
+	"aoc2020/day14"
 	"flag"
 	"fmt"
 	"os"
@@ -66,6 +67,8 @@ func main() {
 		day12.Run(file)
 	case 13:
 		day13.Run(file)
+	case 14:
+		day14.Run(file)
 	default:
 		fmt.Printf("Alas, I can't run for day %d.\n", day)
 	}
