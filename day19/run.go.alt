@@ -1,0 +1,206 @@
+package day19
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type Rule8 struct{}
+type Rule11 struct{}
+
+type RuleChoices struct {
+	sequences []RuleSequence
+}
+
+type RuleSequence struct {
+	rules []int
+}
+
+type Terminal struct {
+	value rune
+}
+
+type RuleSet struct {
+	rules map[int]Rule
+}
+
+type Rule interface {
+	doesMatch(*RuleSet, Message, int) (bool, int)
+}
+
+type Message string
+
+func Run(infile string) {
+
+	fh, err := os.Open(infile)
+	if err != nil {
+		panic(err)
+	}
+
+	messages, ruleSet := parseFile(fh)
+	validMessageCount := countValidMessages(&ruleSet, &messages)
+	fmt.Printf("Number of valid messages: %d\n", validMessageCount)
+
+}
+
+func parseFile(reader io.Reader) ([]Message, RuleSet) {
+	scanner := bufio.NewScanner(reader)
+
+	rawRules := map[int]string{}
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			break
+		}
+		parts := strings.Split(line, ":")
+		ruleIndex, err := strconv.Atoi(parts[0])
+		if err != nil {
+			panic(err)
+		}
+		ruleContent := strings.TrimSpace(parts[1])
+		if _, found := rawRules[ruleIndex]; found {
+			panic(fmt.Sprintf("rule with index %d already there", ruleIndex))
+		}
+		rawRules[ruleIndex] = ruleContent
+	}
+	ruleSet := buildRules(&rawRules)
+
+	messages := make([]Message, 0)
+	for scanner.Scan() {
+		message := Message(strings.TrimSpace(scanner.Text()))
+		messages = append(messages, message)
+	}
+
+	fmt.Printf("Number of rules: %d\n", len(rawRules))
+	fmt.Printf("Number of messages: %d\n", len(messages))
+
+	return messages, ruleSet
+}
+
+func buildRules(raw *map[int]string) RuleSet {
+	ruleSet := RuleSet{rules: map[int]Rule{}}
+	for ruleIndex, ruleString := range *raw {
+		var rule Rule
+		if ruleIndex == 8 {
+			rule = Rule8{}
+		} else if ruleIndex == 11 {
+			rule = Rule11{}
+		} else if strings.HasPrefix(ruleString, "\"") && strings.HasSuffix(ruleString, "\"") {
+			rule = Terminal{rune(ruleString[1])}
+		} else if strings.Contains(ruleString, "|") {
+			choices := RuleChoices{sequences: []RuleSequence{}}
+			for _, sequenceString := range strings.Split(ruleString, "|") {
+				sequenceString = strings.TrimSpace(sequenceString)
+				seq := RuleSequence{rules: convertStringSequenceToInt(sequenceString)}
+				choices.sequences = append(choices.sequences, seq)
+			}
+			rule = choices
+		} else {
+			rule = RuleSequence{rules: convertStringSequenceToInt(ruleString)}
+		}
+		ruleSet.rules[ruleIndex] = rule
+	}
+	return ruleSet
+}
+
+func convertStringSequenceToInt(s string) []int {
+	rv := make([]int, 0)
+	for _, a := range strings.Split(s, " ") {
+		if i, err := strconv.Atoi(a); err != nil {
+			panic(err)
+		} else {
+			rv = append(rv, i)
+		}
+	}
+	return rv
+}
+
+func (t Terminal) doesMatch(ruleSet *RuleSet, m Message, i int) (bool, int) {
+	if i >= len(m) {
+		return false, 0
+	}
+	var next int
+	if i == len(m)-1 {
+		next = 0
+	} else {
+		next = i + 1
+	}
+	return rune(m[i]) == t.value, next
+}
+
+func (seq RuleSequence) doesMatch(ruleSet *RuleSet, m Message, i int) (bool, int) {
+	for _, ruleIndex := range seq.rules {
+		match, next := ruleSet.rules[ruleIndex].doesMatch(ruleSet, m, i)
+		if !match {
+			return false, 0
+		}
+		i = next
+	}
+	return true, i
+}
+
+func (choices RuleChoices) doesMatch(ruleSet *RuleSet, m Message, i int) (bool, int) {
+	for _, seq := range choices.sequences {
+		if match, next := seq.doesMatch(ruleSet, m, i); match {
+			return true, next
+		}
+	}
+	return false, i
+}
+
+func (rule Rule8) doesMatch(ruleSet *RuleSet, m Message, i int) (bool, int) {
+	seq := RuleSequence{rules: []int{42}}
+	for j := 0; j < len(m)-i; j++ {
+		if match, n := seq.doesMatch(ruleSet, m, i); match {
+			if match, n = ruleSet.rules[11].doesMatch(ruleSet, m, n); match {
+				return true, n
+			}
+		}
+		seq.rules = append(seq.rules, 42)
+	}
+	return false, i
+}
+
+func (rule Rule11) doesMatch(ruleSet *RuleSet, m Message, i int) (bool, int) {
+	seq42 := RuleSequence{rules: []int{42}}
+	seq31 := RuleSequence{rules: []int{31}}
+	for j := 0; j < len(m)-i; j++ {
+		seq42.rules = append(seq42.rules, 42)
+		seq31.rules = append(seq31.rules, 31)
+	}
+	seq := RuleSequence{rules: []int{}}
+	seq.rules = append(seq.rules, seq42.rules...)
+	seq.rules = append(seq.rules, seq31.rules...)
+	for len(seq.rules) >= 2 {
+		if match, n := seq.doesMatch(ruleSet, m, i); match {
+			return true, n
+		}
+		seq.rules = seq.rules[1 : len(seq.rules)-1]
+	}
+	return false, i
+}
+
+func doesMatch(ruleSet *RuleSet, rule Rule, m Message) bool {
+	match, next := rule.doesMatch(ruleSet, m, 0)
+	if !match {
+		return false
+	}
+	if next == 0 {
+		return true
+	}
+	return false
+}
+
+func countValidMessages(ruleSet *RuleSet, messages *[]Message) int {
+	total := 0
+	for _, message := range *messages {
+		if doesMatch(ruleSet, ruleSet.rules[8], message) {
+			total++
+		}
+	}
+	return total
+}
