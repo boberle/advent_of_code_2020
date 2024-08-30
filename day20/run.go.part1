@@ -1,0 +1,178 @@
+package day20
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"regexp"
+	"strconv"
+)
+
+const (
+	A = iota
+	B = iota
+)
+
+type Value int
+
+type Side struct {
+	values [10]Value
+}
+
+type Tile struct {
+	id     int
+	right  *Side
+	left   *Side
+	top    *Side
+	bottom *Side
+}
+
+func Run(infile string) {
+
+	fh, err := os.Open(infile)
+	defer fh.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	sides, tiles := parseFile(fh)
+	corners := findCorners(sides, tiles)
+	total := 1
+	for _, corner := range corners {
+		fmt.Println(corner.id)
+		total *= corner.id
+	}
+	fmt.Println(total)
+
+}
+
+func parseFile(reader io.Reader) ([]*Side, []Tile) {
+	sides := []*Side{}
+	tiles := []Tile{}
+
+	scanner := bufio.NewScanner(reader)
+	lines := []string{}
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	for i := 0; i < len(lines); i += 12 {
+		tileId := parseTileId(lines[i])
+		top := parseHorizontalSide(lines[i+1])
+		bottom := parseHorizontalSide(lines[i+10])
+		left := parseFirstVerticalSide(lines[i+1 : i+11])
+		right := parseLastVerticalSide(lines[i+1 : i+11])
+		sides = append(sides, &top, &bottom, &left, &right)
+		tile := Tile{
+			id:     tileId,
+			top:    &top,
+			bottom: &bottom,
+			left:   &left,
+			right:  &right,
+		}
+		tiles = append(tiles, tile)
+	}
+
+	return sides, tiles
+}
+
+func parseTileId(line string) int {
+	tileIdPattern, err := regexp.Compile("Tile (\\d+):")
+	if err != nil {
+		panic(err)
+	}
+	matches := tileIdPattern.FindStringSubmatch(line)
+	if matches == nil {
+		log.Fatalf("can't match tile id in '%d'\n", line)
+	}
+	tileId, err := strconv.Atoi(matches[1])
+	if err != nil {
+		panic(err)
+	}
+	return tileId
+}
+
+func parseHorizontalSide(line string) Side {
+	side := Side{}
+	for i := 0; i < 10; i++ {
+		if line[i] == '.' {
+			side.values[i] = A
+		} else {
+			side.values[i] = B
+		}
+	}
+	return side
+}
+
+func parseFirstVerticalSide(lines []string) Side {
+	return parseVerticalSide(&lines, 0)
+}
+
+func parseLastVerticalSide(lines []string) Side {
+	return parseVerticalSide(&lines, 9)
+}
+
+func parseVerticalSide(lines *[]string, index int) Side {
+	side := Side{}
+	for i := 0; i < 10; i++ {
+		if (*lines)[i][index] == '.' {
+			side.values[i] = A
+		} else {
+			side.values[i] = B
+		}
+	}
+	return side
+}
+
+func pairSides(sides []*Side) map[*Side]struct{} {
+	rv := map[*Side]struct{}{}
+	length := len(sides)
+	for i := 0; i < length; i++ {
+		for j := i + 1; j < length; j++ {
+			if sides[i].values == sides[j].values || reverseValues(sides[i].values) == sides[j].values {
+				if _, found := rv[sides[i]]; found {
+					panic("already there")
+				}
+				rv[sides[i]] = struct{}{}
+				rv[sides[j]] = struct{}{}
+			}
+		}
+	}
+	return rv
+}
+
+func reverseValues(values [10]Value) [10]Value {
+	rv := [10]Value{}
+	for i := 0; i < 10; i++ {
+		rv[9-i] = values[i]
+	}
+	return rv
+}
+
+func findCorners(sides []*Side, tiles []Tile) []Tile {
+	corners := []Tile{}
+	pairs := pairSides(sides)
+
+	for _, tile := range tiles {
+		sideCount := 0
+		if _, found := pairs[tile.left]; found {
+			sideCount++
+		}
+		if _, found := pairs[tile.right]; found {
+			sideCount++
+		}
+		if _, found := pairs[tile.top]; found {
+			sideCount++
+		}
+		if _, found := pairs[tile.bottom]; found {
+			sideCount++
+		}
+		if sideCount == 2 {
+			corners = append(corners, tile)
+		}
+	}
+
+	return corners
+}
